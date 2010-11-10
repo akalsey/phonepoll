@@ -1,0 +1,220 @@
+<?php
+function phonepoll_menu() {
+  $items = array();
+
+  $items['admin/settings/phonepoll'] = array(
+    'title' => 'Phone Survey',
+    'description' => 'Administer settings for the survey',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('phonepoll_settings'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  $items['phonepoll/poll/%node'] = array(
+    'page callback' => 'phonepoll_answer',
+    'access arguments' => array('access content'),
+    'page arguments' => array(2),
+    'type' => MENU_CALLBACK,
+  );
+  
+  $items['phonepoll/poll/%node/vote'] = array(
+    'page callback' => 'phonepoll_recordvote',
+    'access arguments' => array('access content'),
+    'page arguments' => array(2),
+    'type' => MENU_CALLBACK,
+  );
+
+  // generic event handler
+  $items['phonepoll/event/%'] = array(
+    'page callback' => 'phonepoll_event',
+    'access arguments' => array('access content'),
+    'page arguments' => array(2),
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+function phonepoll_answer($node) {
+  // This is the PHP class for Tropo
+  include_once 'tropo-webapi-php/tropo.class.php';
+  $tropo = new Tropo();
+  
+  if ($node->allowvotes === FALSE) {
+    $tropo->say(variable_get('phonepoll_text_pollclosed', "Sorry, this poll has closed."));
+    print $tropo;
+    return;    
+  }
+    
+  // $caller['id'] = '19166002497'; 
+  // $caller['channel'] = 'VOICE';
+  // The Tropo session object contains the caller ID
+  try {
+    $session = new Session();
+    $caller = $session->getFrom();    
+  } catch (TropoException $e) {
+    $tropo->say("There was no Tropo session sent. Running in test mode.");
+    $caller = array(
+        'id' => '12125551212',
+        'channel' => 'VOICE'
+      );
+  }
+  
+  
+  $number = $caller['id'];
+  $_SESSION['caller'] = $number;
+
+  // Check to see if this caller ID has voted before. The poll module
+  // hardcodes IP address, so we have to duplicate the query here
+  $result = db_fetch_object(db_query("SELECT chorder FROM {poll_votes} WHERE nid = %d AND hostname = '%s'", $node->nid, $number));
+  if (isset($result->chorder)) {
+    $node->vote = $result->chorder;
+  }
+  else {
+    $node->vote = -1;
+  }
+  
+  if ($node->vote > -1) {
+    $tropo->say(variable_get('phonepoll_text_alreadyvoted', "You've already voted. Once only, buddy."));
+    print $tropo;
+    return;    
+  }
+  
+  if ($number == 'Restricted' || $number == 'Unknown') {
+    $tropo->say(variable_get('phonepoll_text_blocked', "Sorry, this service can't accept calls from blocked numbers."));
+    print $tropo;
+    return;
+  }
+  
+  // Tell Tropo that when this document is done, redirect 
+  $tropo->on(array('event' => 'continue', 'next'=> url('phonepoll/poll/'. $node->nid .'/vote')));
+  $tropo->on(array('event' => 'error', 'next'=> url('phonepoll/event/error')));
+  $tropo->on(array('event' => 'incomplete', 'next'=> url('phonepoll/event/incomplete')));
+    
+  $grammar = '';
+  $keypad = 1;
+  if ($caller['channel'] == 'TEXT') {
+    $prompt = " ". variable_get('phonepoll_text_textintro', "Your choices are") . ": ";
+  } else {
+    $prompt = '';
+  }  
+  foreach ($node->choice as $choice) {
+    if ($caller['channel'] == 'TEXT') {
+      $prompt .= " {$choice['chtext']}, ";
+      $grammar .= "{$choice['chorder']} ({$choice['chtext']}, ".strtolower($choice['chtext'])."),";
+    } else {
+      $prompt .= " For {$choice['chtext']}, say {$choice['chtext']} or press $keypad. ";
+      $grammar .= "{$choice['chorder']} ($keypad, {$choice['chtext']}),";
+    }
+    $keypad++;
+  }
+
+  //Set up some error handlers
+  $events = array(
+      'timeout' => "Sorry, I didn't get that. $prompt",
+      'nomatch:1 nomatch:2 nomatch:3 noinput' => "That wasn't one of your options. $prompt"
+    );
+  
+  // Ask the question
+  $tropo->ask($node->title . $prompt, array("choices" => $grammar, 'event' => $events, 'attempts' => 3));
+  
+  // Output the JSON for Tropo to read
+  print $tropo;
+}
+
+function phonepoll_recordvote($node) {
+  // This is the PHP class for Tropo
+  include_once 'tropo-webapi-php/tropo.class.php';
+  $tropo = new Tropo();
+
+  if ($node->allowvotes === FALSE) {
+    $tropo->say("Sorry, this poll has closed.");
+    print $tropo;
+    return;    
+  }
+  
+  try {
+    $result = new Result();
+    $choice = $result->getValue();    
+    // The caller ID was put into the session in the previous step
+    $number = $_SESSION['caller'];
+  } catch (TropoException $e) {
+    $tropo->say("No result object from Tropo. Proceding in test mode");
+    $choice = 0;
+    $number = "test-mode";
+  }
+    
+  
+  db_query("INSERT INTO {poll_votes} (nid, chorder, hostname) VALUES (%d, %d, '%s')", $node->nid, $choice, $number);
+
+  // Add one to the votes.
+  db_query("UPDATE {poll_choices} SET chvotes = chvotes + 1 WHERE nid = %d AND chorder = %d", $node->nid, $choice);
+  
+  $chosen = $node->choice[$choice]['chtext'];
+  
+  $tropo->say("Thank you for voting for $chosen. Phone poll powered by Tropo dot com.");
+  
+  print $tropo;
+}
+
+function phonepoll_event($event) {
+  switch ($event) {
+    case 'thanks':
+      $say = "Thank you for voting. Phone poll powered by Tropo dot com.";
+      break;
+    case 'incomplete':
+      $say = "Doesn't look like you're interested in voting today. Call back when you want to try again.";
+      break;
+    case 'error':
+    default:
+      $say = "Something went wrong. Please call back.";
+      break;    
+  }
+  include_once 'tropo-webapi-php/tropo.class.php';
+  $tropo = new Tropo();
+  $tropo->say($say);
+  print $tropo;
+}
+
+function phonepoll_exit() {
+  global $base_root;
+  cache_clear_all($base_root . request_uri(), 'cache_page');
+}
+
+function phonepoll_settings() {
+  $form['phonepoll_text_pollclosed'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Poll closed text'),
+    '#default_value' => variable_get('phonepoll_text_pollclosed', "Sorry, this poll has closed."),
+    '#description' => t('The text to play if the poll is closed.'),
+  );
+  
+  $form['phonepoll_text_alreadyvoted'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Caller has already voted text'),
+    '#default_value' => variable_get('phonepoll_text_alreadyvoted', "You've already voted. Once only, buddy."),
+    '#description' => t('The text to play if the caller has already voted.'),
+  );  
+
+  $form['phonepoll_text_blocked'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Caller ID is blocked text'),
+    '#default_value' => variable_get('phonepoll_text_blocked', "Sorry, this service can't accept calls from blocked numbers."),
+  );  
+
+  $form['phonepoll_text_blocked'] = array(
+    '#type' => 'textfield',
+    '#title' => t('SMS choices intro'),
+    '#default_value' => variable_get('phonepoll_text_textintro', "Your choices are"),
+    '#description' => t('If the channel is text, preface the list of choices with this text.'),
+  );  
+
+  $form['phonepoll_text_blocked'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Caller ID is blocked text'),
+    '#default_value' => variable_get('phonepoll_text_blocked', "Sorry, this service can't accept calls from blocked numbers."),
+  );  
+
+  return system_settings_form($form);  
+}
