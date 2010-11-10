@@ -1,7 +1,7 @@
 phonepoll
 =========
 
-This is a Drupal module that provides phone access to Drupal polls. Using this module and Tropo (http://tropo.com/) people can vote in polls via calls or SMS.
+This is a Drupal module that provides phone access to Drupal polls. Using this module and [Tropo](http://tropo.com/) people can vote in polls via calls or SMS.
 
 This is an early release. Setup is a little manual right now, but will improve shortly.
 
