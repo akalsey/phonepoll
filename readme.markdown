@@ -17,3 +17,12 @@ Create a Tropo account at http://tropo.com/ and create a WebAPI application. For
 Add a phone number -- Tropo has numbers throughout the US and in 41 countries.
 
 Call or SMS your new number and vote.
+
+Planned enhancements
+--------------------
+
+Panned enhancements include...
+
+* customization of the dialog
+* allowing the poll creator to fire off a SMS or voice message to all voters with the result
+* One-click setup of the Tropo app
