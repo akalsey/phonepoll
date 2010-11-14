@@ -250,14 +250,28 @@ function phonepoll_sendresults_submit($form, &$form_state) {
   // Send to all the people who voted
   $votes = db_query("SELECT address, network FROM {phonepoll} WHERE nid = %d", $node->nid);
   $count = 0;
+  
+  // Is Job Queue installed? if so, use it.
+  $use_queue = module_exists('job_queue') ? TRUE : FALSE;
+  if ($use_queue) {
+    drupal_set_message('Using queue...');
+  }
   while ($contact = db_fetch_object($votes)) {
     $count++;
-    phonepoll_launch_tropo($token, $contact, $message);
+    if ($use_queue) {
+      job_queue_add('phonepoll_launch_tropo', 'phonepoll notifications for '. $node->title, array($tropo, $token, $contact, $message), '', TRUE);      
+    } else {
+      phonepoll_launch_tropo($tropo, $token, $contact, $message);
+      sleep(6); // Throttle to keep from running over SMS limit      
+    }
   }
-  drupal_set_message($count . ' Results sent');  
+  drupal_set_message($count . ' Results sent'); 
+  if ($count > 25 && $use_queue === FALSE) {
+    drupal_set_message('For better performance, consider installing job_queue.', 'warning');          
+  } 
 }
 
-function phonepoll_launch_tropo($token, $contact, $message) {
+function phonepoll_launch_tropo(&$tropo, $token, $contact, $message) {
   if ($tropo->createSession($token, array('to' => $contact->address, 'network' => $contact->network, 'msg' => $message))) {
     drupal_set_message( 'Results sent to ' . $contact->address);
   } else {

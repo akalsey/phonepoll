@@ -26,4 +26,6 @@ Planned enhancements
 Panned enhancements include...
 
 * more customization of the dialogs
+* Allow phone calls out
+* Improve Job queue support to better handle SMS throttles
 * One-click setup of the Tropo app
