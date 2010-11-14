@@ -10,7 +10,9 @@ Setup
 
 Copy this directory to your prefered module directory. If you don't have a prefered location, sites/all/modules is always a good choice. Enable this module in admin/build/modules
 
-Create a poll. Note the node ID of the poll. You'll need that for the next step.
+If there's no tropo-webapi-php directory inside this module directory, download it from http://github.com/tropo/tropo-webapi-php and place it inside this directory.
+
+Enable the poll module if you haven't already. Create a poll. Note the node ID of the poll. You'll need that for the next step.
 
 Create a Tropo account at http://tropo.com/ and create a WebAPI application. For the URL of your application, enter http://yoursite.example.com/phonepoll/poll/NODE-ID (replacing NODE-ID with the node ID of your poll)
 
@@ -23,6 +25,5 @@ Planned enhancements
 
 Panned enhancements include...
 
-* customization of the dialog
-* allowing the poll creator to fire off a SMS or voice message to all voters with the result
+* more customization of the dialogs
 * One-click setup of the Tropo app
