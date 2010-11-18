@@ -3,8 +3,8 @@ function phonepoll_menu() {
   $items = array();
 
   $items['admin/settings/phonepoll'] = array(
-    'title' => 'Phone Survey',
-    'description' => 'Administer settings for the survey',
+    'title' => 'Phone Poll',
+    'description' => 'Phone enable your polls',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('phonepoll_settings'),
     'access arguments' => array('access administration pages'),
@@ -54,6 +54,11 @@ function phonepoll_answer($node) {
   try {
     $session = new Session();
     $caller = $session->getFrom(); 
+    if ($number == 'Restricted' || $number == 'Unknown') {
+      $tropo->say(variable_get('phonepoll_text_blocked', "Sorry, this service can't accept calls from blocked numbers."));
+      print $tropo;
+      return;
+    }
     if (strlen($caller['id']) == 10) {
       // Tropo sends US caller IDs without the
       // country code.
@@ -105,12 +110,6 @@ function phonepoll_poll($node, $caller, $tropo) {
     return;    
   }
   
-  if ($number == 'Restricted' || $number == 'Unknown') {
-    $tropo->say(variable_get('phonepoll_text_blocked', "Sorry, this service can't accept calls from blocked numbers."));
-    print $tropo;
-    return;
-  }
-  
   // Tell Tropo that when this document is done, redirect 
   $tropo->on(array('event' => 'continue', 'next'=> url('phonepoll/poll/'. $node->nid .'/vote')));
   $tropo->on(array('event' => 'error', 'next'=> url('phonepoll/event/error')));
@@ -119,17 +118,19 @@ function phonepoll_poll($node, $caller, $tropo) {
   $grammar = '';
   $keypad = 1;
   if ($caller['channel'] == 'TEXT') {
-    $prompt = " ". variable_get('phonepoll_text_textintro', "Your choices are") . ": ";
+    $prompt = " ". variable_get('phonepoll_text_textintro', "Your choices are. reply with the number or name") . ": ";
+    $timeout = 300;
   } else {
     $prompt = '';
+    $timeout = 30;
   }  
 
   foreach ($node->choice as $choice) {
     if ($caller['channel'] == 'TEXT') {
-      $prompt .= " {$choice['chtext']}, ";
+      $prompt .= "$keypad: {$choice['chtext']}, ";
       $grammar .= "{$choice['chorder']} ({$choice['chtext']}, ".strtolower($choice['chtext'])."),";
     } else {
-      $prompt .= " For {$choice['chtext']}, say {$choice['chtext']} or press $keypad. ";
+      $prompt .= " For {$choice['chtext']}, press $keypad. ";
       $grammar .= "{$choice['chorder']} ($keypad, {$choice['chtext']}),";
     }
     $keypad++;
@@ -142,7 +143,7 @@ function phonepoll_poll($node, $caller, $tropo) {
     );
   
   // Ask the question
-  $tropo->ask($node->title . $prompt, array("choices" => $grammar, 'event' => $events, 'attempts' => 3));
+    $tropo->ask($node->title . $prompt, array("choices" => $grammar, 'event' => $events, 'attempts' => 3, 'timeout' => $timeout, 'mode' => 'dtmf'));
   
   // Output the JSON for Tropo to read
   print $tropo;
@@ -184,7 +185,9 @@ function phonepoll_recordvote($node) {
   
   $chosen = $node->choice[$choice]['chtext'];
   
-  $tropo->say("Thank you for voting for $chosen. Phone poll powered by Tropo dot com.");
+  $powered = ($caller['channel'] == 'TEXT') ? "http://tropo.com" : "Tropo dot com.";
+  
+  $tropo->say("Thank you for voting for $chosen. Phone poll powered by $powered");
   
   print $tropo;
 }

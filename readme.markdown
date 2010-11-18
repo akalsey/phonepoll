@@ -29,3 +29,4 @@ Panned enhancements include...
 * Allow phone calls out
 * Improve Job queue support to better handle SMS throttles
 * One-click setup of the Tropo app
+* Multi-tenancy. Allow token and number to be set on per-poll basis

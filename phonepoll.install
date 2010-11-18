@@ -2,9 +2,7 @@
 function phonepoll_install() {
   //create tables
   drupal_install_schema('phonepoll');
-  drupal_set_message(t('Phone poll module installed successfully.'));
-  // Set weight low so we make sure poll.module runs first.
-  //db_query("UPDATE {system} SET weight = 100 WHERE name  = 'phonepoll'");
+  drupal_set_message(t('Phone poll module installed successfully. You should make sure that anonymous users can vote in polls. Polling by phone won\'t work without it.'));
 }
 
 /**
